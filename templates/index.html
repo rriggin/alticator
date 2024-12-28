@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Portfolio Analyzer</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-5">
+        <h1 class="mb-4">Portfolio Analyzer</h1>
+        
+        {% with messages = get_flashed_messages() %}
+            {% if messages %}
+                {% for message in messages %}
+                    <div class="alert alert-danger">{{ message }}</div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+
+        <div class="card mb-4">
+            <div class="card-header">
+                <ul class="nav nav-tabs card-header-tabs" role="tablist">
+                    <li class="nav-item">
+                        <a class="nav-link" data-bs-toggle="tab" href="#manual">Manual Input</a>
+                    </li>
+                    <li class="nav-item">
+                        <a class="nav-link active" data-bs-toggle="tab" href="#csv">CSV Upload</a>
+                    </li>
+                </ul>
+            </div>
+            <div class="card-body">
+                <div class="tab-content">
+                    <div class="tab-pane fade" id="manual">
+                        <form method="POST">
+                            <div class="mb-3">
+                                <label for="tickers" class="form-label">Tickers (space-separated)</label>
+                                <input type="text" class="form-control" id="tickers" name="tickers" 
+                                       placeholder="AAPL MSFT GOOGL">
+                            </div>
+                            
+                            <div class="mb-3">
+                                <label for="weights" class="form-label">Weights (space-separated, must sum to 1)</label>
+                                <input type="text" class="form-control" id="weights" name="weights" 
+                                       placeholder="0.4 0.3 0.3">
+                                <small class="text-muted">Example: 0.4 0.3 0.3</small>
+                            </div>
+                            
+                            <button type="submit" class="btn btn-primary">Analyze Portfolio</button>
+                        </form>
+                    </div>
+                    <div class="tab-pane fade show active" id="csv">
+                        <form method="POST" enctype="multipart/form-data">
+                            <div class="mb-3">
+                                <label for="portfolio_file" class="form-label">Upload Portfolio CSV</label>
+                                <input type="file" class="form-control" id="portfolio_file" 
+                                       name="portfolio_file" accept=".csv">
+                                <small class="text-muted">CSV format: ticker,weight<br>
+                                💡 Tip: Non-ticker inputs for other asset classes ("Art, Crypto") are allowed but won't show returns</small>
+                            </div>
+                            <button type="submit" class="btn btn-primary">Upload and Analyze</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        {% if portfolio %}
+        <div class="card mt-4">
+            <div class="card-body">
+                <h3>Current Portfolio</h3>
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Asset</th>
+                            <th>Weight</th>
+                            <th>YTD Return</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for row in portfolio %}
+                        <tr>
+                            <td>{{ row.ticker }}</td>
+                            <td>{{ "%.2f"|format(row.weight * 100) }}%</td>
+                            <td>
+                                {% if row.ytd_return is none %}
+                                    N/A
+                                {% else %}
+                                    {{ "%.2f"|format(row.ytd_return * 100) }}%
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                <small class="text-muted mb-3 d-block">Note: Portfolio return excludes assets without return data</small>
+                <h4>Portfolio YTD Return: {{ "%.2f"|format(result * 100) }}%</h4>
+
+                <!-- Simulation Form -->
+                <div class="mt-4">
+                    <h4>Simulate Portfolio Change</h4>
+                    <form method="POST" action="{{ url_for('simulate') }}">
+                        <div class="row">
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">New Asset</label>
+                                    <input type="text" class="form-control" name="new_asset" 
+                                           placeholder="Enter ticker or asset name">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Target Weight (%)</label>
+                                    <input type="number" class="form-control" name="new_weight" 
+                                           placeholder="20" min="0" max="100">
+                                </div>
+                            </div>
+                            <div class="col-md-4">
+                                <div class="mb-3">
+                                    <label class="form-label">Rebalance Method</label>
+                                    <select class="form-select" name="rebalance_method">
+                                        <option value="proportional">Proportional</option>
+                                        <option value="largest">Reduce Largest</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Simulate Change</button>
+                    </form>
+                </div>
+
+                {% if simulation %}
+                <div class="mt-4">
+                    <h4>Simulation Results</h4>
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h5>Original Portfolio</h5>
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Asset</th>
+                                        <th>Weight</th>
+                                        <th>YTD Return</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in portfolio %}
+                                    <tr>
+                                        <td>{{ row.ticker }}</td>
+                                        <td>{{ "%.2f"|format(row.weight * 100) }}%</td>
+                                        <td>
+                                            {% if row.ytd_return is none %}
+                                                N/A
+                                            {% else %}
+                                                {{ "%.2f"|format(row.ytd_return * 100) }}%
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            <h6>Portfolio Return: {{ "%.2f"|format(result * 100) }}%</h6>
+                        </div>
+                        <div class="col-md-6">
+                            <h5>Simulated Portfolio</h5>
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Asset</th>
+                                        <th>Weight</th>
+                                        <th>YTD Return</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in simulation_portfolio %}
+                                    <tr>
+                                        <td>{{ row.ticker }}</td>
+                                        <td>{{ "%.2f"|format(row.weight * 100) }}%</td>
+                                        <td>
+                                            {% if row.ytd_return is none %}
+                                                N/A
+                                            {% else %}
+                                                {{ "%.2f"|format(row.ytd_return * 100) }}%
+                                            {% endif %}
+                                        </td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                            <h6>Portfolio Return: {{ "%.2f"|format(simulation_return * 100) }}%</h6>
+                        </div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html> 
