@@ -6,7 +6,7 @@ def get_ytd_returns(tickers):
     """
     Get YTD returns for a list of tickers
     """
-    start_date = date(date.today().year, 1, 1)  # January 1st of current year
+    start_date = date(date.today().year, 1, 1)
     end_date = date.today()
     
     returns_dict = {}
@@ -19,12 +19,22 @@ def get_ytd_returns(tickers):
         try:
             stock = yf.Ticker(ticker)
             hist = stock.history(start=start_date, end=end_date)
+            print(f"\nDebug - {ticker} history:")
+            print(f"Start date: {start_date}")
+            print(f"End date: {end_date}")
+            print(f"Data points: {len(hist)}")
+            if len(hist) > 0:
+                print(f"First close: {hist['Close'].iloc[0]}")
+                print(f"Last close: {hist['Close'].iloc[-1]}")
+            
             if not hist.empty:
-                ytd_return = (hist['Close'][-1] - hist['Close'][0]) / hist['Close'][0]
+                ytd_return = (hist['Close'].iloc[-1] - hist['Close'].iloc[0]) / hist['Close'].iloc[0]
                 returns_dict[ticker] = ytd_return
             else:
+                print(f"No data found for {ticker}")
                 returns_dict[ticker] = None
         except Exception as e:
+            print(f"Error fetching {ticker}: {str(e)}")
             returns_dict[ticker] = None
             print(f"Could not fetch return data for {ticker}")
     
