@@ -172,7 +172,7 @@
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {% for row in simulation_portfolio %}
+                                    {% for row in simulation_portfolio if row.ticker and row.ticker != 'nan' and row.ticker != '' %}
                                     <tr>
                                         <td>{{ row.ticker }}</td>
                                         <td>{{ "%.2f"|format(row.weight * 100) }}%</td>

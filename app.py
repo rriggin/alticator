@@ -89,12 +89,21 @@ def simulate():
             rebalance_method
         )
         
+        # Clean up simulation results
+        simulation_portfolio = [
+            row for row in simulation['portfolio_df'].to_dict('records')
+            if row.get('ticker') and str(row['ticker']) != 'nan' and str(row['ticker']).strip() != ''
+        ]
+        print("\nFiltered simulation portfolio:")
+        for row in simulation_portfolio:
+            print(f"Row: {row}")
+        
         return render_template('index.html',
                              portfolio=original_portfolio,
-                             result=(portfolio_df['weight'] * portfolio_df['ytd_return']).sum(),  # Original portfolio return
-                             simulation_portfolio=simulation['portfolio_df'].to_dict('records'),
+                             result=(portfolio_df['weight'] * portfolio_df['ytd_return']).sum(),
+                             simulation_portfolio=simulation_portfolio,
                              simulation_return=simulation['portfolio_return'],
-                             simulation=simulation)
+                             simulation=True)
                              
     except Exception as e:
         flash(f"Oops! Couldn't simulate that change: {str(e)} 😊")

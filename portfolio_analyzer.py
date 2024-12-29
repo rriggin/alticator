@@ -12,7 +12,7 @@ def get_ytd_returns(tickers):
     returns_dict = {}
     for ticker in tickers:
         # Skip non-ticker inputs (e.g., asset types, comments)
-        if not ticker.isalnum():
+        if not str(ticker).replace(' ', '').isalnum():
             returns_dict[ticker] = None
             continue
         
@@ -70,6 +70,9 @@ def read_portfolio_csv(file):
     """
     try:
         df = pd.read_csv(file)
+        # Clean up any NaN values from the CSV
+        df = df.dropna(subset=['ticker'])
+        df = df[df['ticker'] != 'nan']
         required_columns = ['ticker', 'weight']
         if not all(col in df.columns for col in required_columns):
             raise ValueError("CSV must contain columns: ticker, weight")
@@ -99,6 +102,10 @@ def simulate_portfolio_change(portfolio_df, new_asset, new_weight, rebalance_met
         new_weight: Target weight for new asset (as decimal)
         rebalance_method: How to rebalance existing weights ('proportional' or 'largest')
     """
+    # Clean input DataFrame
+    portfolio_df = portfolio_df[portfolio_df['ticker'].notna()]
+    portfolio_df = portfolio_df[portfolio_df['ticker'] != 'nan'].copy()
+    
     # Create a copy of the portfolio
     new_portfolio = portfolio_df.copy()
     
@@ -124,7 +131,11 @@ def simulate_portfolio_change(portfolio_df, new_asset, new_weight, rebalance_met
     
     # Add new asset
     new_asset_return = None
-    if new_asset.isalnum():  # Only fetch return if it looks like a ticker
+    print("\n=== Debug Info ===")
+    print(f"New asset type: {type(new_asset)}, value: {new_asset}")
+    print(f"New weight type: {type(new_weight)}, value: {new_weight}")
+    
+    if str(new_asset).replace(' ', '').isalnum():
         try:
             returns_dict = get_ytd_returns([new_asset])
             new_asset_return = returns_dict[new_asset]
@@ -136,11 +147,30 @@ def simulate_portfolio_change(portfolio_df, new_asset, new_weight, rebalance_met
         'weight': [new_weight],
         'ytd_return': [new_asset_return]
     })
+    print("\nNew row DataFrame:")
+    print(new_row.dtypes)
+    print(new_row)
     
     new_portfolio = pd.concat([new_portfolio, new_row], ignore_index=True)
+    print("\nFull portfolio after concat:")
+    print(new_portfolio.dtypes)
+    print(new_portfolio)
+    
+    # Clean up any NaN rows before calculating return
+    new_portfolio = new_portfolio.dropna(subset=['ticker'])
+    new_portfolio = new_portfolio[new_portfolio['ticker'] != 'nan']
     
     # Calculate new portfolio return
     portfolio_return = (new_portfolio['weight'] * new_portfolio['ytd_return']).sum()
+    
+    # Clean up the DataFrame more thoroughly
+    new_portfolio = new_portfolio[
+        (new_portfolio['ticker'].notna()) &  # Remove NaN tickers
+        (new_portfolio['weight'].notna()) &  # Remove NaN weights
+        (new_portfolio['ticker'] != 'nan') &  # Remove 'nan' strings
+        (new_portfolio['ticker'] != '') &     # Remove empty strings
+        (new_portfolio['ticker'].str.strip() != '')  # Remove whitespace-only strings
+    ].copy()
     
     return {
         'portfolio_df': new_portfolio,
