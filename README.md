@@ -15,3 +15,11 @@ A web application that helps users analyze and simulate changes to their investm
 ## Installation
 
 1. Clone the repository: 
+
+## ToDos
+- add a line graph for the original portfolio
+- add a line graph with both the original portfolio and simulation
+- add support for inputing a rate for non ticker assets in simulation
+- add a logo 
+- enhance front end design
+  
