@@ -53,6 +53,18 @@ def analyze_portfolio(tickers, weights):
     # Get YTD returns
     returns = get_ytd_returns(tickers)
     
+    # Get historical data
+    historical_data = get_historical_returns(tickers)
+    
+    # Calculate portfolio historical returns
+    portfolio_hist = pd.DataFrame()
+    for ticker, weight in zip(tickers, weights):
+        if ticker in historical_data.columns:
+            if portfolio_hist.empty:
+                portfolio_hist = historical_data[ticker] * weight
+            else:
+                portfolio_hist += historical_data[ticker] * weight
+    
     # Create portfolio DataFrame
     portfolio_df = pd.DataFrame({
         'ticker': tickers,
@@ -67,7 +79,9 @@ def analyze_portfolio(tickers, weights):
     
     return {
         'portfolio_df': portfolio_df,
-        'portfolio_return': portfolio_return
+        'portfolio_return': portfolio_return,
+        'historical_data': historical_data.to_dict('records') if not historical_data.empty else {},
+        'portfolio_hist': {str(k): v for k, v in portfolio_hist.items()} if not portfolio_hist.empty else {}
     }
 
 def read_portfolio_csv(file):
@@ -186,3 +200,43 @@ def simulate_portfolio_change(portfolio_df, new_asset, new_weight, rebalance_met
         'portfolio_df': new_portfolio,
         'portfolio_return': portfolio_return
     } 
+
+def get_historical_returns(tickers, interval='1d', period='ytd'):
+    """
+    Get historical returns for portfolio tickers
+    """
+    historical_data = {}
+    
+    for ticker in tickers:
+        if not str(ticker).replace(' ', '').isalnum():
+            continue
+            
+        try:
+            stock = yf.Ticker(ticker)
+            hist = stock.history(interval=interval, period=period)
+            if not hist.empty:
+                historical_data[ticker] = hist['Close']
+        except Exception as e:
+            print(f"Error fetching historical data for {ticker}: {str(e)}")
+            
+    return pd.DataFrame(historical_data)
+
+def calculate_portfolio_historical_returns(historical_data, tickers, weights):
+    """
+    Calculate historical returns for the entire portfolio
+    
+    Args:
+        historical_data: DataFrame with historical prices for each ticker
+        tickers: List of ticker symbols
+        weights: List of portfolio weights
+    """
+    portfolio_hist = pd.DataFrame()
+    
+    for ticker, weight in zip(tickers, weights):
+        if ticker in historical_data.columns:
+            if portfolio_hist.empty:
+                portfolio_hist = historical_data[ticker] * weight
+            else:
+                portfolio_hist += historical_data[ticker] * weight
+    
+    return portfolio_hist 

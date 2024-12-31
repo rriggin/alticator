@@ -1,8 +1,8 @@
-from flask import Flask, render_template, request, flash, session, redirect, url_for
+from flask import Flask, render_template, request, flash, session, redirect, url_for, jsonify
 from werkzeug.utils import secure_filename
 import os
 import pandas as pd
-from portfolio_analyzer import analyze_portfolio, read_portfolio_csv, simulate_portfolio_change
+from portfolio_analyzer import analyze_portfolio, read_portfolio_csv, simulate_portfolio_change, get_historical_returns, calculate_portfolio_historical_returns
 
 app = Flask(__name__)
 app.secret_key = 'your-secret-key-here'
@@ -34,11 +34,7 @@ def index():
             else:
                 # Handle manual input
                 if not request.form.get('tickers') and not request.files['portfolio_file'].filename:
-                    # Check which form was submitted
-                    if 'portfolio_file' in request.files:
-                        flash("Wait, you have to upload a file first. Or you can type your tickers in manually. 😊")
-                    else:
-                        flash("Oops, you have to enter your tickers first. 😊")
+                    flash("Wait, you have to upload a file first. Or you can type your tickers in manually. 😊")
                     return render_template('index.html')
                 
                 tickers = request.form['tickers'].upper().split()
@@ -52,21 +48,15 @@ def index():
             
             return render_template('index.html', 
                                 result=result['portfolio_return'],
-                                portfolio=result['portfolio_df'].to_dict('records'))
+                                portfolio=result['portfolio_df'].to_dict('records'),
+                                historical_data=result['historical_data'],
+                                portfolio_hist=result['portfolio_hist'])
             
         except Exception as e:
-            # Make error messages more user-friendly
-            error_msg = str(e)
-            if '400 Bad Request' in error_msg:
-                # Check which form was submitted
-                if 'portfolio_file' in request.files:
-                    error_msg = "Wait, you have to upload a file first. Or you can type your tickers in manually. 😊"
-                else:
-                    error_msg = "Oops, you have to enter your tickers first. 😊"
-            flash(error_msg)
-            return render_template('index.html')
+            flash(str(e))
+            return render_template('index.html', historical_data={}, portfolio_hist={})
     
-    return render_template('index.html')
+    return render_template('index.html', historical_data={}, portfolio_hist={})
 
 @app.route('/simulate', methods=['POST'])
 def simulate():
@@ -108,6 +98,20 @@ def simulate():
     except Exception as e:
         flash(f"Oops! Couldn't simulate that change: {str(e)} 😊")
         return redirect(url_for('index'))
+
+@app.route('/historical-data')
+def historical_data():
+    interval = request.args.get('interval', '1d')
+    tickers = [row['ticker'] for row in session.get('current_portfolio', [])]
+    weights = [row['weight'] for row in session.get('current_portfolio', [])]
+    
+    historical_data = get_historical_returns(tickers, interval=interval)
+    portfolio_hist = calculate_portfolio_historical_returns(historical_data, tickers, weights)
+    
+    return jsonify({
+        'historical_data': historical_data.to_dict('records'),
+        'portfolio_hist': {str(k): v for k, v in portfolio_hist.items()}
+    })
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', debug=True, port=5000) 
