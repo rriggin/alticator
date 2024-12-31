@@ -1,3 +1,4 @@
+import numpy as np
 import pandas as pd
 import yfinance as yf
 from datetime import datetime, date
@@ -77,11 +78,20 @@ def analyze_portfolio(tickers, weights):
     valid_returns = portfolio_df[portfolio_df['ytd_return'].notna()]
     portfolio_return = (valid_returns['weight'] * valid_returns['ytd_return']).sum()
     
+    # Convert portfolio history to dictionary with string dates
+    if isinstance(portfolio_hist, pd.Series):
+        portfolio_hist_dict = {
+            str(k): float(v) if not pd.isna(v) else 0.0 
+            for k, v in portfolio_hist.items()
+        }
+    else:
+        portfolio_hist_dict = {}
+    
     return {
         'portfolio_df': portfolio_df,
         'portfolio_return': portfolio_return,
         'historical_data': historical_data.to_dict('records') if not historical_data.empty else {},
-        'portfolio_hist': {str(k): v for k, v in portfolio_hist.items()} if not portfolio_hist.empty else {}
+        'portfolio_hist': portfolio_hist_dict
     }
 
 def read_portfolio_csv(file):
@@ -116,7 +126,7 @@ def read_portfolio_csv(file):
         else:
             raise Exception(f"Error reading portfolio file: {str(e)}") 
 
-def simulate_portfolio_change(portfolio_df, new_asset, new_weight, rebalance_method='proportional'):
+def simulate_portfolio_change(portfolio_df, new_asset, new_weight, rebalance_method='proportional', manual_return=None):
     """
     Simulate adding a new asset to the portfolio
     
@@ -125,10 +135,47 @@ def simulate_portfolio_change(portfolio_df, new_asset, new_weight, rebalance_met
         new_asset: Ticker or name of new asset to add
         new_weight: Target weight for new asset (as decimal)
         rebalance_method: How to rebalance existing weights ('proportional' or 'largest')
+        manual_return: Optional manual return rate for non-ticker assets (as decimal)
     """
     # Clean input DataFrame
     portfolio_df = portfolio_df[portfolio_df['ticker'].notna()]
     portfolio_df = portfolio_df[portfolio_df['ticker'] != 'nan'].copy()
+    
+    # Get all tickers including the new one
+    all_tickers = portfolio_df['ticker'].tolist() + [new_asset]
+    
+    # Handle manual return first if provided
+    if manual_return is not None:
+        # Create synthetic data structure
+        historical_data = pd.DataFrame()
+        
+        # Get data for existing portfolio tickers
+        for ticker in portfolio_df['ticker']:
+            if ' ' not in ticker:  # Only get market data for actual tickers
+                ticker_data = get_historical_returns([ticker])
+                if not ticker_data.empty:
+                    historical_data[ticker] = ticker_data[ticker]
+        
+        # Add synthetic data for the new asset
+        if historical_data.empty:
+            # If no market data, create basic date range
+            dates = pd.date_range(start=date(date.today().year, 1, 1), end=date.today(), freq='B')
+            historical_data.index = dates
+        
+        # Create synthetic returns for the new asset
+        base_dates = historical_data.index
+        num_days = len(base_dates)
+        # Use existing dates but create new values
+        dates = base_dates
+        values = [i/num_days * manual_return for i in range(num_days)]
+        returns = pd.Series(data=values, index=dates)
+        historical_data[new_asset] = returns
+        # Ensure we have a DataFrame
+        if not isinstance(historical_data, pd.DataFrame):
+            historical_data = pd.DataFrame(historical_data)
+    else:
+        # Get historical data for all tickers at once
+        historical_data = get_historical_returns(all_tickers)
     
     # Create a copy of the portfolio
     new_portfolio = portfolio_df.copy()
@@ -140,9 +187,22 @@ def simulate_portfolio_change(portfolio_df, new_asset, new_weight, rebalance_met
         # Reduce each position proportionally
         scale_factor = 1 - new_weight
         new_portfolio['weight'] = new_portfolio['weight'] * scale_factor
-    else:  # 'largest' method
+    elif rebalance_method == 'largest':  # 'largest' method
         # Reduce largest positions first
         sorted_positions = new_portfolio.sort_values('weight', ascending=False)
+        remaining_reduction = total_reduction
+        
+        for idx, row in sorted_positions.iterrows():
+            if remaining_reduction <= 0:
+                break
+            
+            reduction = min(row['weight'], remaining_reduction)
+            new_portfolio.loc[idx, 'weight'] -= reduction
+            remaining_reduction -= reduction
+    else:  # 'worst' method
+        # Sort by YTD return, handling None values
+        new_portfolio['ytd_return'] = pd.to_numeric(new_portfolio['ytd_return'], errors='coerce')
+        sorted_positions = new_portfolio.sort_values('ytd_return', ascending=True)
         remaining_reduction = total_reduction
         
         for idx, row in sorted_positions.iterrows():
@@ -155,12 +215,12 @@ def simulate_portfolio_change(portfolio_df, new_asset, new_weight, rebalance_met
     
     # Add new asset
     new_asset_return = None
-    print("\n=== Debug Info ===")
-    print(f"New asset type: {type(new_asset)}, value: {new_asset}")
-    print(f"New weight type: {type(new_weight)}, value: {new_weight}")
-    
-    if str(new_asset).replace(' ', '').isalnum():
+    if manual_return is not None:
+        # Use manual return if provided
+        new_asset_return = manual_return
+    elif str(new_asset).replace(' ', '').isalnum():
         try:
+            # Get YTD return using the same method as the original portfolio
             returns_dict = get_ytd_returns([new_asset])
             new_asset_return = returns_dict[new_asset]
         except:
@@ -171,55 +231,72 @@ def simulate_portfolio_change(portfolio_df, new_asset, new_weight, rebalance_met
         'weight': [new_weight],
         'ytd_return': [new_asset_return]
     })
-    print("\nNew row DataFrame:")
-    print(new_row.dtypes)
-    print(new_row)
     
     new_portfolio = pd.concat([new_portfolio, new_row], ignore_index=True)
-    print("\nFull portfolio after concat:")
-    print(new_portfolio.dtypes)
-    print(new_portfolio)
     
-    # Clean up any NaN rows before calculating return
+    # Clean up any NaN rows
     new_portfolio = new_portfolio.dropna(subset=['ticker'])
     new_portfolio = new_portfolio[new_portfolio['ticker'] != 'nan']
     
     # Calculate new portfolio return
     portfolio_return = (new_portfolio['weight'] * new_portfolio['ytd_return']).sum()
     
-    # Clean up the DataFrame more thoroughly
-    new_portfolio = new_portfolio[
-        (new_portfolio['ticker'].notna()) &  # Remove NaN tickers
-        (new_portfolio['weight'].notna()) &  # Remove NaN weights
-        (new_portfolio['ticker'] != 'nan') &  # Remove 'nan' strings
-        (new_portfolio['ticker'] != '') &     # Remove empty strings
-        (new_portfolio['ticker'].str.strip() != '')  # Remove whitespace-only strings
-    ].copy()
+    # Get historical data for the new portfolio
+    tickers = new_portfolio['ticker'].tolist()
+    weights = new_portfolio['weight'].tolist()
+    print("\nDebug info:")
+    print(f"Historical data type: {type(historical_data)}")
+    print(f"Historical data columns: {historical_data.columns if isinstance(historical_data, pd.DataFrame) else 'Not a DataFrame'}")
+    print(f"Historical data index type: {type(historical_data.index[0]) if not historical_data.empty else 'Empty'}")
+    portfolio_hist = calculate_portfolio_historical_returns(historical_data, tickers, weights)
+    print(f"Portfolio hist type: {type(portfolio_hist)}")
+    print(f"Portfolio hist index type: {type(portfolio_hist.index[0]) if isinstance(portfolio_hist, pd.Series) else 'Not a Series'}")
+    print(f"Portfolio hist first few items: {list(portfolio_hist.items())[:3] if isinstance(portfolio_hist, pd.Series) else 'Not a Series'}")
+
+    # Convert portfolio history to dictionary with string dates
+    if isinstance(portfolio_hist, pd.Series):
+        portfolio_hist_dict = {
+            str(k): float(v) if not pd.isna(v) else 0.0 
+            for k, v in portfolio_hist.items()
+        }
+    else:
+        portfolio_hist_dict = {}
     
     return {
         'portfolio_df': new_portfolio,
-        'portfolio_return': portfolio_return
-    } 
+        'portfolio_return': portfolio_return,
+        'historical_data': historical_data.to_dict() if isinstance(historical_data, pd.DataFrame) else {},
+        'portfolio_hist': portfolio_hist_dict
+    }
 
 def get_historical_returns(tickers, interval='1d', period='ytd'):
     """
     Get historical returns for portfolio tickers
     """
-    historical_data = {}
+    historical_data = pd.DataFrame()
     
     for ticker in tickers:
-        if not str(ticker).replace(' ', '').isalnum():
+        # Skip yfinance lookup for non-ticker assets (containing spaces)
+        if ' ' in ticker:
             continue
             
         try:
             stock = yf.Ticker(ticker)
             hist = stock.history(interval=interval, period=period)
             if not hist.empty:
-                historical_data[ticker] = hist['Close']
+                # Calculate returns instead of using prices
+                returns = hist['Close'].pct_change()
+                # Fill first NaN with 0
+                returns.iloc[0] = 0
+                # Calculate cumulative returns
+                cumulative_returns = (1 + returns).cumprod() - 1
+                # Convert index to timezone-naive dates
+                cumulative_returns.index = cumulative_returns.index.tz_localize(None).strftime('%Y-%m-%d')
+                historical_data = pd.concat([historical_data, pd.DataFrame({ticker: cumulative_returns})], axis=1)
         except Exception as e:
             print(f"Error fetching historical data for {ticker}: {str(e)}")
             
-    return pd.DataFrame(historical_data)
+    return historical_data
 
 def calculate_portfolio_historical_returns(historical_data, tickers, weights):
     """
@@ -230,13 +307,17 @@ def calculate_portfolio_historical_returns(historical_data, tickers, weights):
         tickers: List of ticker symbols
         weights: List of portfolio weights
     """
-    portfolio_hist = pd.DataFrame()
+    portfolio_hist = None
     
     for ticker, weight in zip(tickers, weights):
         if ticker in historical_data.columns:
-            if portfolio_hist.empty:
+            if portfolio_hist is None:
                 portfolio_hist = historical_data[ticker] * weight
             else:
                 portfolio_hist += historical_data[ticker] * weight
+    
+    # Return empty dict if no data
+    if portfolio_hist is None:
+        return pd.Series()
     
     return portfolio_hist 

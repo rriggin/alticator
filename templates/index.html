@@ -109,62 +109,70 @@
                 
                 <div id="portfolio-chart" class="mb-4" style="height: 400px;"></div>
                 
-                <table class="table">
-                    <thead>
-                        <tr>
-                            <th>Asset</th>
-                            <th>Weight</th>
-                            <th>YTD Return</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for row in portfolio %}
-                        <tr>
-                            <td>{{ row.ticker }}</td>
-                            <td>{{ "%.2f"|format(row.weight * 100) }}%</td>
-                            <td>
-                                {% if row.ytd_return is none %}
-                                    N/A
-                                {% else %}
-                                    {{ "%.2f"|format(row.ytd_return * 100) }}%
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
-                <small class="text-muted mb-3 d-block">Note: Portfolio return excludes assets without return data</small>
-                <h4>Portfolio YTD Return: {{ "%.2f"|format(result * 100) }}%</h4>
+                {% if not simulation %}
+                <div class="row">
+                    <div class="col-md-6">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Asset</th>
+                                    <th>Weight</th>
+                                    <th>YTD Return</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for row in portfolio %}
+                                <tr>
+                                    <td>{{ row.ticker }}</td>
+                                    <td>{{ "%.2f"|format(row.weight * 100) }}%</td>
+                                    <td>
+                                        {% if row.ytd_return is none %}
+                                            N/A
+                                        {% else %}
+                                            {{ "%.2f"|format(row.ytd_return * 100) }}%
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                        <h6>Portfolio Return: {{ "%.2f"|format(result * 100) }}%</h6>
+                    </div>
+                </div>
+                {% endif %}
 
                 <!-- Simulation Form -->
                 <div class="mt-4">
                     <h4>Simulate Portfolio Change</h4>
                     <form method="POST" action="{{ url_for('simulate') }}">
-                        <div class="row">
-                            <div class="col-md-4">
-                                <div class="mb-3">
-                                    <label class="form-label">New Asset</label>
-                                    <input type="text" class="form-control" name="new_asset" 
-                                           placeholder="Enter ticker or asset name">
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="mb-3">
-                                    <label class="form-label">Target Weight (%)</label>
-                                    <input type="number" class="form-control" name="new_weight" 
-                                           placeholder="20" min="0" max="100">
-                                </div>
-                            </div>
-                            <div class="col-md-4">
-                                <div class="mb-3">
-                                    <label class="form-label">Rebalance Method</label>
-                                    <select class="form-select" name="rebalance_method">
-                                        <option value="proportional">Proportional</option>
-                                        <option value="largest">Reduce Largest</option>
-                                    </select>
-                                </div>
-                            </div>
+                        <div class="mb-3">
+                            <label for="new_asset" class="form-label">New Asset</label>
+                            <input type="text" class="form-control" id="new_asset" name="new_asset" required>
+                            <small class="text-muted">Enter ticker symbol or asset name (e.g., "Art", "Real Estate")</small>
                         </div>
+                        
+                        <div class="mb-3">
+                            <label for="new_weight" class="form-label">Weight (%)</label>
+                            <input type="number" class="form-control" id="new_weight" name="new_weight" 
+                                   min="0" max="100" step="0.01" required>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label for="manual_return" class="form-label">Manual Return Rate (%)</label>
+                            <input type="number" class="form-control" id="manual_return" name="manual_return" 
+                                   min="-100" max="1000" step="0.01">
+                            <small class="text-muted">Optional: Enter YTD return for non-ticker assets</small>
+                        </div>
+                        
+                        <div class="mb-3">
+                            <label class="form-label">Rebalance Method</label>
+                            <select class="form-select" name="rebalance_method">
+                                <option value="proportional">Proportional</option>
+                                <option value="largest">Reduce Largest</option>
+                                <option value="worst">Reduce Worst Performing</option>
+                            </select>
+                        </div>
+                        
                         <button type="submit" class="btn btn-primary">Simulate Change</button>
                     </form>
                 </div>
@@ -247,16 +255,30 @@
         if (Object.keys(portfolioHist).length > 0) {
             // Create initial chart
             function createChart(data) {
-                const trace = {
-                    x: Object.keys(data),
-                    y: Object.values(data),
+                const traces = [{
+                    x: Object.keys(data.original),
+                    y: Object.values(data.original),
                     type: 'scatter',
                     mode: 'lines',
-                    name: 'Portfolio Returns',
+                    name: 'Original Portfolio',
                     line: {
                         color: '#3498DB'
                     }
-                };
+                }];
+                
+                // Add simulation trace if it exists
+                if (data.simulation) {
+                    traces.push({
+                        x: Object.keys(data.simulation),
+                        y: Object.values(data.simulation),
+                        type: 'scatter',
+                        mode: 'lines',
+                        name: 'Simulated Portfolio',
+                        line: {
+                            color: '#E74C3C'
+                        }
+                    });
+                }
                 
                 const layout = {
                     title: 'Portfolio Performance',
@@ -265,16 +287,34 @@
                     },
                     yaxis: {
                         title: 'Return',
-                        tickformat: '.1%'
+                        tickformat: '.1%',
+                        hoverformat: '.2%',
+                        gridcolor: '#E1E5EA',
+                        zerolinecolor: '#2C3E50'
+                    },
+                    plot_bgcolor: 'white',
+                    paper_bgcolor: 'white',
+                    showlegend: true,
+                    legend: {
+                        x: 1.1,
+                        xanchor: 'left',
+                        y: 1,
+                        yanchor: 'top'
+                    },
+                    margin: {
+                        r: 150  // Add right margin to make room for legend
                     },
                     hovermode: 'x unified'
                 };
                 
-                Plotly.newPlot('portfolio-chart', [trace], layout);
+                Plotly.newPlot('portfolio-chart', traces, layout);
             }
             
             // Initialize chart
-            createChart(portfolioHist);
+            createChart({
+                original: portfolioHist,
+                simulation: {{ simulation_portfolio_hist | default({}) | tojson | safe }}
+            });
             
             // Handle interval changes
             document.querySelectorAll('[data-interval]').forEach(button => {
@@ -282,7 +322,10 @@
                     const interval = e.target.dataset.interval;
                     const response = await fetch(`/historical-data?interval=${interval}`);
                     const data = await response.json();
-                    createChart(data.portfolio_hist);
+                    createChart({
+                        original: data.portfolio_hist,
+                        simulation: data.simulation_hist
+                    });
                     
                     // Update active button
                     document.querySelectorAll('[data-interval]').forEach(btn => 

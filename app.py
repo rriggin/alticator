@@ -65,18 +65,31 @@ def simulate():
         new_asset = request.form['new_asset']
         new_weight = float(request.form['new_weight']) / 100
         rebalance_method = request.form['rebalance_method']
+        manual_return = None
+        if request.form.get('manual_return'):
+            manual_return = float(request.form['manual_return']) / 100
         
         # Get original portfolio from session
         original_portfolio = session.get('current_portfolio')
-        # Convert list of dictionaries back to DataFrame
         portfolio_df = pd.DataFrame(original_portfolio)
+        
+        # Get original portfolio historical data
+        original_tickers = portfolio_df['ticker'].tolist()
+        original_weights = portfolio_df['weight'].tolist()
+        original_historical = get_historical_returns(original_tickers)
+        original_hist = calculate_portfolio_historical_returns(original_historical, original_tickers, original_weights)
+        original_hist_dict = {
+            str(k): float(v) if not pd.isna(v) else 0.0 
+            for k, v in original_hist.items()
+        }
         
         # Simulate changes
         simulation = simulate_portfolio_change(
             portfolio_df,
             new_asset, 
             new_weight,
-            rebalance_method
+            rebalance_method,
+            manual_return=manual_return
         )
         
         # Clean up simulation results
@@ -84,15 +97,18 @@ def simulate():
             row for row in simulation['portfolio_df'].to_dict('records')
             if row.get('ticker') and str(row['ticker']) != 'nan' and str(row['ticker']).strip() != ''
         ]
-        print("\nFiltered simulation portfolio:")
-        for row in simulation_portfolio:
-            print(f"Row: {row}")
+        
+        # Store simulation in session
+        session['simulation_portfolio'] = simulation_portfolio
         
         return render_template('index.html',
                              portfolio=original_portfolio,
                              result=(portfolio_df['weight'] * portfolio_df['ytd_return']).sum(),
                              simulation_portfolio=simulation_portfolio,
                              simulation_return=simulation['portfolio_return'],
+                             historical_data=original_historical.to_dict(),
+                             portfolio_hist=original_hist_dict,
+                             simulation_portfolio_hist=simulation['portfolio_hist'],
                              simulation=True)
                              
     except Exception as e:
@@ -108,9 +124,29 @@ def historical_data():
     historical_data = get_historical_returns(tickers, interval=interval)
     portfolio_hist = calculate_portfolio_historical_returns(historical_data, tickers, weights)
     
+    # Get simulation data if it exists in session
+    simulation_hist = {}
+    if 'simulation_portfolio' in session:
+        sim_tickers = [row['ticker'] for row in session['simulation_portfolio']]
+        sim_weights = [row['weight'] for row in session['simulation_portfolio']]
+        sim_historical = get_historical_returns(sim_tickers, interval=interval)
+        simulation_hist = calculate_portfolio_historical_returns(sim_historical, sim_tickers, sim_weights)
+        simulation_hist = {str(k): v for k, v in simulation_hist.items()}
+    
+    # Convert data for JSON response
+    def convert_series_to_dict(series):
+        if isinstance(series, pd.Series):
+            result = {}
+            for date_idx, value in series.items():
+                date_str = pd.Timestamp(date_idx).strftime('%Y-%m-%d')
+                result[date_str] = float(value)
+            return result
+        return {}
+    
     return jsonify({
         'historical_data': historical_data.to_dict('records'),
-        'portfolio_hist': {str(k): v for k, v in portfolio_hist.items()}
+        'portfolio_hist': convert_series_to_dict(portfolio_hist),
+        'simulation_hist': convert_series_to_dict(simulation_hist)
     })
 
 if __name__ == '__main__':
