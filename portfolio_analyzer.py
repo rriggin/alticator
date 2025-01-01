@@ -3,13 +3,29 @@ import pandas as pd
 import yfinance as yf
 from datetime import datetime, date
 
-def get_ytd_returns(tickers):
+def get_returns(tickers, start_date=None, end_date=None):
     """
-    Get YTD returns for a list of tickers
+    Get returns for a list of tickers over a specified date range
     """
-    start_date = date(date.today().year, 1, 1)
-    end_date = date.today()
+    if start_date is None or end_date is None:
+        start_date = date(date.today().year, 1, 1)
+        end_date = date.today()
+    else:
+        # If end date is in the future, use today's date
+        if isinstance(end_date, str):
+            end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+        if isinstance(start_date, str):
+            start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+        
+        # If dates are in the future, adjust them
+        if end_date > date.today():
+            print(f"Warning: End date {end_date} is in the future, using today's date instead")
+            end_date = date.today()
+        if start_date > date.today():
+            print(f"Warning: Start date {start_date} is in the future, using 1 year ago")
+            start_date = date.today().replace(year=date.today().year - 1)
     
+    print(f"\nFetching returns from {start_date} to {end_date}")
     returns_dict = {}
     for ticker in tickers:
         # Skip non-ticker inputs (e.g., asset types, comments)
@@ -19,7 +35,11 @@ def get_ytd_returns(tickers):
         
         try:
             stock = yf.Ticker(ticker)
-            hist = stock.history(start=start_date, end=end_date)
+            print(f"\nFetching data for {ticker}")
+            # Get data up to today if end date is in the future
+            hist = stock.history(start=start_date, end=min(end_date, date.today()), interval="1d", prepost=False)
+            print(f"Raw history data:")
+            print(hist.head())
             print(f"\nDebug - {ticker} history:")
             print(f"Start date: {start_date}")
             print(f"End date: {end_date}")
@@ -27,9 +47,12 @@ def get_ytd_returns(tickers):
             if len(hist) > 0:
                 print(f"First close: {hist['Close'].iloc[0]}")
                 print(f"Last close: {hist['Close'].iloc[-1]}")
+                print(f"First date: {hist.index[0]}")
+                print(f"Last date: {hist.index[-1]}")
             
             if not hist.empty:
                 ytd_return = (hist['Close'].iloc[-1] - hist['Close'].iloc[0]) / hist['Close'].iloc[0]
+                print(f"Calculated YTD return: {ytd_return * 100:.2f}%")
                 returns_dict[ticker] = ytd_return
             else:
                 print(f"No data found for {ticker}")
@@ -41,21 +64,37 @@ def get_ytd_returns(tickers):
     
     return returns_dict
 
-def analyze_portfolio(tickers, weights):
+def analyze_portfolio(tickers, weights, start_date=None, end_date=None):
     """
     Analyze portfolio given tickers and weights
     """
+    # Use provided dates or default to current year
+    if start_date is None or end_date is None:
+        start_date = date(date.today().year, 1, 1)
+        end_date = date.today()
+    else:
+        if isinstance(start_date, str):
+            start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+        if isinstance(end_date, str):
+            end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+    
     if abs(sum(weights) - 1.0) > 0.0001:
         raise ValueError("Weights must sum to 1")
     
     if len(tickers) != len(weights):
         raise ValueError("Number of tickers must match number of weights")
     
-    # Get YTD returns
-    returns = get_ytd_returns(tickers)
+    # Get returns
+    returns = get_returns(tickers, start_date=start_date, end_date=end_date)
+    print("\nDebug - Returns:")
+    for ticker, ret in returns.items():
+        if ret is not None:
+            print(f"{ticker}: {ret * 100:.2f}%")
+        else:
+            print(f"{ticker}: None")
     
     # Get historical data
-    historical_data = get_historical_returns(tickers)
+    historical_data = get_historical_returns(tickers, start_date=start_date.strftime('%Y-%m-%d'), end_date=end_date.strftime('%Y-%m-%d'))
     
     # Calculate portfolio historical returns
     portfolio_hist = pd.DataFrame()
@@ -126,7 +165,8 @@ def read_portfolio_csv(file):
         else:
             raise Exception(f"Error reading portfolio file: {str(e)}") 
 
-def simulate_portfolio_change(portfolio_df, new_asset, new_weight, rebalance_method='proportional', manual_return=None):
+def simulate_portfolio_change(portfolio_df, new_asset, new_weight, rebalance_method='proportional', 
+                          manual_return=None, start_date=None, end_date=None):
     """
     Simulate adding a new asset to the portfolio
     
@@ -136,6 +176,8 @@ def simulate_portfolio_change(portfolio_df, new_asset, new_weight, rebalance_met
         new_weight: Target weight for new asset (as decimal)
         rebalance_method: How to rebalance existing weights ('proportional' or 'largest')
         manual_return: Optional manual return rate for non-ticker assets (as decimal)
+        start_date: Start date for historical data
+        end_date: End date for historical data
     """
     # Clean input DataFrame
     portfolio_df = portfolio_df[portfolio_df['ticker'].notna()]
@@ -152,14 +194,14 @@ def simulate_portfolio_change(portfolio_df, new_asset, new_weight, rebalance_met
         # Get data for existing portfolio tickers
         for ticker in portfolio_df['ticker']:
             if ' ' not in ticker:  # Only get market data for actual tickers
-                ticker_data = get_historical_returns([ticker])
+                ticker_data = get_historical_returns([ticker], start_date=start_date, end_date=end_date)
                 if not ticker_data.empty:
                     historical_data[ticker] = ticker_data[ticker]
         
         # Add synthetic data for the new asset
         if historical_data.empty:
             # If no market data, create basic date range
-            dates = pd.date_range(start=date(date.today().year, 1, 1), end=date.today(), freq='B')
+            dates = pd.date_range(start=start_date, end=end_date, freq='B')
             historical_data.index = dates
         
         # Create synthetic returns for the new asset
@@ -220,8 +262,8 @@ def simulate_portfolio_change(portfolio_df, new_asset, new_weight, rebalance_met
         new_asset_return = manual_return
     elif str(new_asset).replace(' ', '').isalnum():
         try:
-            # Get YTD return using the same method as the original portfolio
-            returns_dict = get_ytd_returns([new_asset])
+            # Get return using the same method as the original portfolio
+            returns_dict = get_returns([new_asset], start_date=start_date, end_date=end_date)
             new_asset_return = returns_dict[new_asset]
         except:
             new_asset_return = None
@@ -269,20 +311,55 @@ def simulate_portfolio_change(portfolio_df, new_asset, new_weight, rebalance_met
         'portfolio_hist': portfolio_hist_dict
     }
 
-def get_historical_returns(tickers, interval='1d', period='ytd'):
+def get_historical_returns(tickers, interval='1d', start_date=None, end_date=None):
     """
     Get historical returns for portfolio tickers
     """
-    historical_data = pd.DataFrame()
+    # Get data for all tickers first
+    ticker_data = {}
+    
+    # Return empty DataFrame with proper index if no tickers
+    if not tickers:
+        return pd.DataFrame(index=pd.DatetimeIndex([]))
+    
+    # Use provided dates or default to YTD
+    if start_date is None or end_date is None:
+        start_date = date(date.today().year, 1, 1)
+        end_date = date.today()
+    else:
+        if isinstance(start_date, str):
+            start_date = datetime.strptime(start_date, '%Y-%m-%d').date()
+        if isinstance(end_date, str):
+            end_date = datetime.strptime(end_date, '%Y-%m-%d').date()
+    
+    # If end date is in the future, use today's date
+    if end_date > date.today():
+        print(f"Warning: End date {end_date} is in the future, using today's date instead")
+        end_date = date.today()
+    
+    # If start date is in the future, use 1 year ago from today
+    if start_date > date.today():
+        print(f"Warning: Start date {start_date} is in the future, using 1 year ago")
+        start_date = date.today().replace(year=date.today().year - 1)
+    
+    print(f"\nFetching historical returns for {tickers}")
+    print(f"Start date: {start_date}")
+    print(f"End date: {end_date}")
+    print(f"Interval: {interval}")
+    
+    # Get data for all tickers first
+    ticker_data = {}
     
     for ticker in tickers:
         # Skip yfinance lookup for non-ticker assets (containing spaces)
         if ' ' in ticker:
+            print(f"Skipping {ticker} - contains spaces")
             continue
             
         try:
             stock = yf.Ticker(ticker)
-            hist = stock.history(interval=interval, period=period)
+            # Get data for our date range
+            hist = stock.history(interval=interval, start=start_date, end=end_date, prepost=False)
             if not hist.empty:
                 # Calculate returns instead of using prices
                 returns = hist['Close'].pct_change()
@@ -291,11 +368,32 @@ def get_historical_returns(tickers, interval='1d', period='ytd'):
                 # Calculate cumulative returns
                 cumulative_returns = (1 + returns).cumprod() - 1
                 # Convert index to timezone-naive dates
-                cumulative_returns.index = cumulative_returns.index.tz_localize(None).strftime('%Y-%m-%d')
-                historical_data = pd.concat([historical_data, pd.DataFrame({ticker: cumulative_returns})], axis=1)
+                cumulative_returns.index = pd.to_datetime(cumulative_returns.index).tz_localize(None)
+                ticker_data[ticker] = cumulative_returns
+                print(f"Got {len(hist)} data points for {ticker}")
         except Exception as e:
             print(f"Error fetching historical data for {ticker}: {str(e)}")
+    
+    # Create DataFrame with common date range
+    if ticker_data:
+        # Get common date range from actual data
+        all_dates = sorted(set().union(*[data.index for data in ticker_data.values()]))
+        historical_data = pd.DataFrame(index=all_dates)
+        
+        # Add each ticker's data
+        for ticker, data in ticker_data.items():
+            historical_data[ticker] = data
             
+        # Forward fill missing values
+        historical_data = historical_data.ffill()
+        
+        # Fill remaining NaN with 0
+        historical_data = historical_data.fillna(0)
+    
+    # Convert index to string dates only if we have data
+    if not historical_data.empty and isinstance(historical_data.index, pd.DatetimeIndex):
+        historical_data.index = historical_data.index.strftime('%Y-%m-%d')
+    
     return historical_data
 
 def calculate_portfolio_historical_returns(historical_data, tickers, weights):

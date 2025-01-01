@@ -88,6 +88,16 @@
                                 <small class="text-muted">CSV format: ticker,weight<br>
                                 💡 Tip: Non-ticker inputs for other asset classes ("Art, Crypto") are allowed but won't show returns</small>
                             </div>
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-4">
+                                    <label class="form-label">Start Date</label>
+                                    <input type="date" class="form-control" id="upload-start-date" name="start_date">
+                                </div>
+                                <div class="col-md-4">
+                                    <label class="form-label">End Date</label>
+                                    <input type="date" class="form-control" id="upload-end-date" name="end_date">
+                                </div>
+                            </div>
                             <button type="submit" class="btn btn-primary">Upload and Analyze</button>
                         </form>
                     </div>
@@ -100,14 +110,29 @@
             <div class="card-body">
                 <h3>Current Portfolio</h3>
                 <div class="mb-3">
-                    <div class="btn-group" role="group">
-                        <button type="button" class="btn btn-outline-primary active" data-interval="1d">Daily</button>
-                        <button type="button" class="btn btn-outline-primary" data-interval="1wk">Weekly</button>
-                        <button type="button" class="btn btn-outline-primary" data-interval="1mo">Monthly</button>
+                    <div class="row g-3 align-items-end">
+                        <div class="col-md-3">
+                            <label class="form-label">Start Date</label>
+                            <input type="date" class="form-control" id="start-date">
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label">End Date</label>
+                            <input type="date" class="form-control" id="end-date">
+                        </div>
+                        <div class="col-md-4">
+                            <div class="btn-group" role="group">
+                                <button type="button" class="btn btn-outline-primary active" data-interval="1d">Daily</button>
+                                <button type="button" class="btn btn-outline-primary" data-interval="1wk">Weekly</button>
+                                <button type="button" class="btn btn-outline-primary" data-interval="1mo">Monthly</button>
+                            </div>
+                        </div>
+                        <div class="col-md-2">
+                            <button type="button" class="btn btn-primary w-100" id="update-dates">Update</button>
+                        </div>
                     </div>
                 </div>
                 
-                <div id="portfolio-chart" class="mb-4" style="height: 400px;"></div>
+                <div id="portfolio-chart" class="mb-4" style="height: 500px; width: 100%; border: 1px solid #eee;"></div>
                 
                 {% if not simulation %}
                 <div class="row">
@@ -117,7 +142,7 @@
                                 <tr>
                                     <th>Asset</th>
                                     <th>Weight</th>
-                                    <th>YTD Return</th>
+                                    <th>Return</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -136,7 +161,7 @@
                                 {% endfor %}
                             </tbody>
                         </table>
-                        <h6>Portfolio Return: {{ "%.2f"|format(result * 100) }}%</h6>
+                        <h6>Portfolio Performance: {{ "%.2f"|format(result * 100) }}%</h6>
                     </div>
                 </div>
                 {% endif %}
@@ -145,6 +170,9 @@
                 <div class="mt-4">
                     <h4>Simulate Portfolio Change</h4>
                     <form method="POST" action="{{ url_for('simulate') }}">
+                        <input type="hidden" name="start_date" id="sim-start-date">
+                        <input type="hidden" name="end_date" id="sim-end-date">
+                        <input type="hidden" name="interval" id="sim-interval">
                         <div class="mb-3">
                             <label for="new_asset" class="form-label">New Asset</label>
                             <input type="text" class="form-control" id="new_asset" name="new_asset" required>
@@ -188,7 +216,7 @@
                                     <tr>
                                         <th>Asset</th>
                                         <th>Weight</th>
-                                        <th>YTD Return</th>
+                                        <th>Return</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -207,7 +235,7 @@
                                     {% endfor %}
                                 </tbody>
                             </table>
-                            <h6>Portfolio Return: {{ "%.2f"|format(result * 100) }}%</h6>
+                            <h6>Portfolio Performance: {{ "%.2f"|format(result * 100) }}%</h6>
                         </div>
                         <div class="col-md-6">
                             <h5>Simulated Portfolio</h5>
@@ -216,7 +244,7 @@
                                     <tr>
                                         <th>Asset</th>
                                         <th>Weight</th>
-                                        <th>YTD Return</th>
+                                        <th>Return</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -235,7 +263,7 @@
                                     {% endfor %}
                                 </tbody>
                             </table>
-                            <h6>Portfolio Return: {{ "%.2f"|format(simulation_return * 100) }}%</h6>
+                            <h6>Portfolio Performance: {{ "%.2f"|format(simulation_return * 100) }}%</h6>
                         </div>
                     </div>
                 </div>
@@ -247,93 +275,185 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
     <script>
-        // Portfolio historical data
-        const historicalData = {{ historical_data | tojson | safe }};
-        const portfolioHist = {{ portfolio_hist | tojson | safe }};
-        
-        // Only create chart if we have data
-        if (Object.keys(portfolioHist).length > 0) {
-            // Create initial chart
-            function createChart(data) {
-                const traces = [{
-                    x: Object.keys(data.original),
-                    y: Object.values(data.original),
-                    type: 'scatter',
-                    mode: 'lines',
-                    name: 'Original Portfolio',
-                    line: {
-                        color: '#3498DB'
-                    }
-                }];
-                
-                // Add simulation trace if it exists
-                if (data.simulation) {
-                    traces.push({
-                        x: Object.keys(data.simulation),
-                        y: Object.values(data.simulation),
-                        type: 'scatter',
-                        mode: 'lines',
-                        name: 'Simulated Portfolio',
-                        line: {
-                            color: '#E74C3C'
-                        }
-                    });
-                }
-                
-                const layout = {
-                    title: 'Portfolio Performance',
-                    xaxis: {
-                        title: 'Date'
-                    },
-                    yaxis: {
-                        title: 'Return',
-                        tickformat: '.1%',
-                        hoverformat: '.2%',
-                        gridcolor: '#E1E5EA',
-                        zerolinecolor: '#2C3E50'
-                    },
-                    plot_bgcolor: 'white',
-                    paper_bgcolor: 'white',
-                    showlegend: true,
-                    legend: {
-                        x: 1.1,
-                        xanchor: 'left',
-                        y: 1,
-                        yanchor: 'top'
-                    },
-                    margin: {
-                        r: 150  // Add right margin to make room for legend
-                    },
-                    hovermode: 'x unified'
-                };
-                
-                Plotly.newPlot('portfolio-chart', traces, layout);
+        document.addEventListener('DOMContentLoaded', function() {
+            // Set default dates (last year)
+            const today = new Date();
+            const startDate = new Date(today.getFullYear() - 1, 0, 1);  // Jan 1st of last year
+            const endDate = new Date(today.getFullYear() - 1, 11, 31);  // Dec 31st of last year
+            
+            document.getElementById('upload-start-date').value = startDate.toISOString().split('T')[0];
+            document.getElementById('upload-end-date').value = endDate.toISOString().split('T')[0];
+            
+            // Copy dates to other date pickers when they exist
+            const startDateEl = document.getElementById('start-date');
+            const endDateEl = document.getElementById('end-date');
+            if (startDateEl) startDateEl.value = startDate.toISOString().split('T')[0];
+            if (endDateEl) endDateEl.value = endDate.toISOString().split('T')[0];
+            
+            // Portfolio historical data
+            const historicalData = {{ historical_data | tojson | safe }};
+            const portfolioHist = {{ portfolio_hist | tojson | safe }};
+            const simulationData = {{ simulation_data | default({}) | tojson | safe }};
+            
+            // Debug logging
+            console.log('Historical Data:', historicalData);
+            console.log('Portfolio History:', portfolioHist);
+            console.log('Simulation Data:', simulationData);
+            
+            // Check if portfolio-chart element exists
+            const chartElement = document.getElementById('portfolio-chart');
+            if (!chartElement) {
+                console.error('Chart element not found!');
+                return;
             }
             
-            // Initialize chart
-            createChart({
-                original: portfolioHist,
-                simulation: {{ simulation_portfolio_hist | default({}) | tojson | safe }}
-            });
-            
-            // Handle interval changes
-            document.querySelectorAll('[data-interval]').forEach(button => {
-                button.addEventListener('click', async (e) => {
-                    const interval = e.target.dataset.interval;
-                    const response = await fetch(`/historical-data?interval=${interval}`);
-                    const data = await response.json();
-                    createChart({
-                        original: data.portfolio_hist,
-                        simulation: data.simulation_hist
-                    });
+            // Only create chart if we have data
+            if (Object.keys(portfolioHist).length > 0) {
+                console.log('Creating chart...');
+                // Create initial chart
+                function createChart(data) {
+                    console.log('Chart data:', data);
+                    console.log('Simulation data:', data.simulation);
+                    console.log('Data keys:', Object.keys(data));
+                    console.log('Original data points:', Object.keys(data.original).length);
+                    console.log('Simulation data points:', data.simulation ? Object.keys(data.simulation).length : 0);
+                    console.log('Original dates:', Object.keys(data.original));
+                    console.log('Original values:', Object.values(data.original));
+                    if (data.simulation) {
+                        console.log('Simulation dates:', Object.keys(data.simulation));
+                        console.log('Simulation values:', Object.values(data.simulation));
+                    }
+                    if (!data.original || Object.keys(data.original).length === 0) {
+                        console.error('No data to plot!');
+                        return;
+                    }
                     
-                    // Update active button
-                    document.querySelectorAll('[data-interval]').forEach(btn => 
-                        btn.classList.remove('active'));
-                    e.target.classList.add('active');
+                    const traces = [{
+                        x: Object.keys(data.original),
+                        y: Object.values(data.original),
+                        type: 'scatter',
+                        mode: 'lines',
+                        name: 'Original Portfolio',
+                        line: {
+                            color: '#3498DB'
+                        }
+                    }];
+                    
+                    // Add simulation trace if it exists
+                    if (data.simulation && Object.keys(data.simulation).length > 0) {
+                        console.log('Adding simulation trace');  // Debug log
+                        console.log('Simulation dates:', Object.keys(data.simulation));
+                        console.log('Simulation values:', Object.values(data.simulation));
+                        traces.push({
+                            x: Object.keys(data.simulation),
+                            y: Object.values(data.simulation),
+                            type: 'scatter',
+                            mode: 'lines',
+                            name: 'Simulated Portfolio',
+                            line: {
+                                color: '#E74C3C'
+                            }
+                        });
+                    }
+                    
+                    const layout = {
+                        title: 'Portfolio Performance',
+                        xaxis: {
+                            title: 'Date'
+                        },
+                        yaxis: {
+                            title: 'Return',
+                            tickformat: '.1%',
+                            hoverformat: '.2%',
+                            gridcolor: '#E1E5EA',
+                            zerolinecolor: '#2C3E50'
+                        },
+                        plot_bgcolor: 'white',
+                        paper_bgcolor: 'white',
+                        showlegend: true,
+                        legend: {
+                            x: 1.1,
+                            xanchor: 'left',
+                            y: 1,
+                            yanchor: 'top'
+                        },
+                        margin: {
+                            r: 150,  // Add right margin to make room for legend
+                            l: 50,   // Add left margin
+                            t: 50,   // Add top margin
+                            b: 50    // Add bottom margin
+                        },
+                        hovermode: 'x unified',
+                        autosize: true  // Make chart responsive
+                    };
+                    
+                    // Create chart with responsive config
+                    const config = {
+                        responsive: true,
+                        displayModeBar: true
+                    };
+                    
+                    Plotly.newPlot('portfolio-chart', traces, layout, config);
+                }
+                
+                // Initialize chart
+                createChart({
+                    original: portfolioHist,
+                    simulation: {{ simulation_data.simulation | tojson | safe if simulation_data and simulation_data.simulation else {} | tojson | safe }}
+                });
+            } else {
+                console.error('No portfolio history data available');
+            }
+
+            // Handle date updates
+            document.getElementById('update-dates').addEventListener('click', async () => {
+                const startDate = document.getElementById('start-date').value;
+                const endDate = document.getElementById('end-date').value;
+                
+                // Update simulation form hidden fields
+                document.getElementById('sim-start-date').value = startDate;
+                document.getElementById('sim-end-date').value = endDate;
+                
+                const interval = document.querySelector('[data-interval].active').dataset.interval;
+                
+                const response = await fetch('/historical-data', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/x-www-form-urlencoded',
+                    },
+                    body: new URLSearchParams({
+                        'interval': document.querySelector('[data-interval].active').dataset.interval,
+                        'start_date': startDate,
+                        'end_date': endDate
+                    })
+                });
+                const data = await response.json();
+                console.log('Received data:', data);
+                console.log('Simulation data:', data.simulation_hist);
+                console.log('Original data:', data.portfolio_hist);
+                createChart({
+                    original: data.portfolio_hist,
+                    simulation: data.simulation_hist
                 });
             });
-        }
+
+            // Handle interval button clicks
+            const intervalButtons = document.querySelectorAll('[data-interval]');
+            intervalButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    // Remove active class from all buttons
+                    intervalButtons.forEach(b => b.classList.remove('active'));
+                    // Add active class to clicked button
+                    button.classList.add('active');
+                    // Update simulation interval
+                    document.getElementById('sim-interval').value = button.dataset.interval;
+                    // Trigger update
+                    document.getElementById('update-dates').click();
+                });
+            });
+            // Set initial interval
+            document.getElementById('sim-interval').value = document.querySelector('[data-interval].active').dataset.interval;
+        });
     </script>
 </body>
 </html> 
