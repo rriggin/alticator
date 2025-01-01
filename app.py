@@ -72,9 +72,17 @@ def index():
     
     return render_template('index.html', historical_data={}, portfolio_hist={})
 
-@app.route('/simulate', methods=['POST'])
+@app.route('/simulate', methods=['GET', 'POST'])
 def simulate():
     """Handle portfolio simulation requests"""
+    if request.method == 'GET':
+        # Check if there's a portfolio in the session
+        if not session.get('current_portfolio'):
+            flash("Please upload a portfolio before running simulations. 📊")
+        else:
+            flash("To run a simulation, please use the simulation form below. 📈")
+        return redirect(url_for('index'))
+
     try:
         new_asset = request.form['new_asset']
         new_weight = float(request.form['new_weight']) / 100
