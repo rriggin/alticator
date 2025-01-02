@@ -3,7 +3,7 @@ from flask_session import Session
 from werkzeug.utils import secure_filename
 import os
 import pandas as pd
-from portfolio_analyzer import analyze_portfolio, read_portfolio_csv, simulate_portfolio_change, get_historical_returns, calculate_portfolio_historical_returns
+from portfolio_analyzer import analyze_portfolio, read_portfolio_csv, simulate_portfolio_change, get_historical_returns, calculate_portfolio_historical_returns, calculate_risk_metrics
 from datetime import date
 
 app = Flask(__name__)
@@ -64,7 +64,10 @@ def index():
                                 result=result['portfolio_return'],
                                 portfolio=result['portfolio_df'].to_dict('records'),
                                 historical_data=result['historical_data'],
-                                portfolio_hist=result['portfolio_hist'])
+                                portfolio_hist=result['portfolio_hist'],
+                                portfolio_risk=result['portfolio_risk'],
+                                portfolio_sharpe=result['portfolio_sharpe'],
+                                portfolio_sortino=result['portfolio_sortino'])
             
         except Exception as e:
             flash(str(e))
@@ -114,6 +117,11 @@ def simulate():
         original_weights = portfolio_df['weight'].tolist()
         original_historical = get_historical_returns(original_tickers, interval=interval, start_date=start_date, end_date=end_date)
         original_hist = calculate_portfolio_historical_returns(original_historical, original_tickers, original_weights)
+        
+        # Calculate risk metrics for original portfolio
+        original_returns = original_hist.pct_change().fillna(0)
+        original_risk_metrics = calculate_risk_metrics(original_returns)
+        
         original_hist_dict = {
             str(k): float(v) if not pd.isna(v) else 0.0 
             for k, v in original_hist.items()
@@ -168,6 +176,12 @@ def simulate():
                              simulation_return=simulation['portfolio_return'],
                              historical_data=original_historical.to_dict(),
                              portfolio_hist=original_hist_dict,
+                             portfolio_risk=original_risk_metrics['volatility'],
+                             portfolio_sharpe=original_risk_metrics['sharpe_ratio'],
+                             portfolio_sortino=original_risk_metrics['sortino_ratio'],
+                             simulation_risk=simulation['portfolio_risk'],
+                             simulation_sharpe=simulation['portfolio_sharpe'],
+                             simulation_sortino=simulation['portfolio_sortino'],
                              simulation_data={
                                  'original': original_hist_dict,
                                  'simulation': sim_hist_dict

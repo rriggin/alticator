@@ -108,7 +108,7 @@
         {% if portfolio %}
         <div class="card mt-4">
             <div class="card-body">
-                <h3>Current Portfolio</h3>
+                <h3>Portfolio Performance</h3>
                 <div class="mb-3">
                     <div class="row g-3 align-items-end">
                         <div class="col-md-3">
@@ -136,13 +136,15 @@
                 
                 {% if not simulation %}
                 <div class="row">
-                    <div class="col-md-6">
+                    <div class="col-md-8">
                         <table class="table">
                             <thead>
                                 <tr>
                                     <th>Asset</th>
                                     <th>Weight</th>
                                     <th>Return</th>
+                                    <th>Volatility</th>
+                                    <th>Sharpe Ratio</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -157,11 +159,26 @@
                                             {{ "%.2f"|format(row.ytd_return * 100) }}%
                                         {% endif %}
                                     </td>
+                                    <td>{{ "%.2f"|format(row.volatility * 100) if row.volatility else 'N/A' }}%</td>
+                                    <td>{{ "%.2f"|format(row.sharpe_ratio) if row.sharpe_ratio else 'N/A' }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
                         </table>
-                        <h6>Portfolio Performance: {{ "%.2f"|format(result * 100) }}%</h6>
+                        <div class="row">
+                            <div class="col-md-3">
+                                <h6>Total Return: {{ "%.2f"|format(result * 100) }}%</h6>
+                            </div>
+                            <div class="col-md-3">
+                                <h6>Portfolio Volatility: {{ "%.2f"|format(portfolio_risk * 100) }}%</h6>
+                            </div>
+                            <div class="col-md-3">
+                                <h6>Sharpe Ratio: {{ "%.2f"|format(portfolio_sharpe) }}</h6>
+                            </div>
+                            <div class="col-md-3">
+                                <h6>Sortino Ratio: {{ "%.2f"|format(portfolio_sortino) if portfolio_sortino else '0.00' }}</h6>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 {% endif %}
@@ -217,6 +234,8 @@
                                         <th>Asset</th>
                                         <th>Weight</th>
                                         <th>Return</th>
+                                        <th>Volatility</th>
+                                        <th>Sharpe Ratio</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -231,11 +250,26 @@
                                                 {{ "%.2f"|format(row.ytd_return * 100) }}%
                                             {% endif %}
                                         </td>
+                                        <td>{{ "%.2f"|format(row.volatility * 100) if row.volatility else 'N/A' }}%</td>
+                                        <td>{{ "%.2f"|format(row.sharpe_ratio) if row.sharpe_ratio else 'N/A' }}</td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
                             </table>
-                            <h6>Portfolio Performance: {{ "%.2f"|format(result * 100) }}%</h6>
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <h6>Total Return: {{ "%.2f"|format(result * 100) }}%</h6>
+                                </div>
+                                <div class="col-md-3">
+                                    <h6>Portfolio Volatility: {{ "%.2f"|format(portfolio_risk * 100) }}%</h6>
+                                </div>
+                                <div class="col-md-3">
+                                    <h6>Sharpe Ratio: {{ "%.2f"|format(portfolio_sharpe) }}</h6>
+                                </div>
+                                <div class="col-md-3">
+                                    <h6>Sortino Ratio: {{ "%.2f"|format(portfolio_sortino) }}</h6>
+                                </div>
+                            </div>
                         </div>
                         <div class="col-md-6">
                             <h5>Simulated Portfolio</h5>
@@ -245,6 +279,8 @@
                                         <th>Asset</th>
                                         <th>Weight</th>
                                         <th>Return</th>
+                                        <th>Volatility</th>
+                                        <th>Sharpe Ratio</th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -259,11 +295,26 @@
                                                 {{ "%.2f"|format(row.ytd_return * 100) }}%
                                             {% endif %}
                                         </td>
+                                        <td>{{ "%.2f"|format(row.volatility * 100) if row.volatility else 'N/A' }}%</td>
+                                        <td>{{ "%.2f"|format(row.sharpe_ratio) if row.sharpe_ratio else 'N/A' }}</td>
                                     </tr>
                                     {% endfor %}
                                 </tbody>
                             </table>
-                            <h6>Portfolio Performance: {{ "%.2f"|format(simulation_return * 100) }}%</h6>
+                            <div class="row">
+                                <div class="col-md-3">
+                                    <h6>Total Return: {{ "%.2f"|format(simulation_return * 100) }}%</h6>
+                                </div>
+                                <div class="col-md-3">
+                                    <h6>Portfolio Volatility: {{ "%.2f"|format(simulation_risk * 100) }}%</h6>
+                                </div>
+                                <div class="col-md-3">
+                                    <h6>Sharpe Ratio: {{ "%.2f"|format(simulation_sharpe) }}</h6>
+                                </div>
+                                <div class="col-md-3">
+                                    <h6>Sortino Ratio: {{ "%.2f"|format(simulation_sortino) }}</h6>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 </div>
