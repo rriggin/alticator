@@ -96,14 +96,18 @@ def analyze_portfolio(tickers, weights, start_date=None, end_date=None):
     # Get historical data
     historical_data = get_historical_returns(tickers, start_date=start_date.strftime('%Y-%m-%d'), end_date=end_date.strftime('%Y-%m-%d'))
     
-    # Calculate portfolio historical returns
-    portfolio_hist = pd.DataFrame()
+    # Calculate portfolio returns properly
+    returns_df = historical_data.pct_change().fillna(0)
+    portfolio_returns = pd.Series(0.0, index=returns_df.index)
+    
     for ticker, weight in zip(tickers, weights):
-        if ticker in historical_data.columns:
-            if portfolio_hist.empty:
-                portfolio_hist = historical_data[ticker] * weight
-            else:
-                portfolio_hist += historical_data[ticker] * weight
+        if ticker in returns_df.columns:
+            portfolio_returns += returns_df[ticker] * weight
+    
+    # Calculate cumulative returns properly
+    portfolio_hist = (1 + portfolio_returns).cumprod() - 1
+    # Convert to percentage - match the simulation calculation
+    portfolio_hist = portfolio_hist * 100 / 100
     
     # Create portfolio DataFrame
     portfolio_df = pd.DataFrame({
@@ -561,20 +565,25 @@ def calculate_portfolio_historical_returns(historical_data, tickers, weights):
         tickers: List of ticker symbols
         weights: List of portfolio weights
     """
-    portfolio_hist = None
+    # Start with $100 investment
+    initial_investment = 100
+    portfolio_value = pd.Series(initial_investment, index=historical_data.index)
     
     for ticker, weight in zip(tickers, weights):
         if ticker in historical_data.columns:
-            if portfolio_hist is None:
-                portfolio_hist = historical_data[ticker] * weight
-            else:
-                portfolio_hist += historical_data[ticker] * weight
+            # Normalize prices to start at $1
+            normalized_prices = historical_data[ticker] / historical_data[ticker].iloc[0]
+            # Calculate contribution to portfolio value
+            portfolio_value += initial_investment * weight * (normalized_prices - 1)
     
-    # Return empty dict if no data
-    if portfolio_hist is None:
+    # Return empty series if no data
+    if portfolio_value.empty:
         return pd.Series()
     
-    return portfolio_hist 
+    # Convert to percentage return
+    percentage_return = ((portfolio_value - initial_investment) / initial_investment) * 100
+    
+    return percentage_return
 
 def calculate_risk_metrics(returns, risk_free_rate=0.05):
     """Calculate risk metrics for a series of returns"""

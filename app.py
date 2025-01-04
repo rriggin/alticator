@@ -50,8 +50,19 @@ def index():
             start_date = request.form.get('start_date')
             end_date = request.form.get('end_date')
             
+            # Get historical data
+            historical_data = get_historical_returns(tickers, start_date=start_date, end_date=end_date)
+            
             # Analyze portfolio
             result = analyze_portfolio(tickers, weights, start_date=start_date, end_date=end_date)
+            
+            # Debug logging for portfolio history values
+            print("\nDebug - Portfolio History Values:")
+            portfolio_hist = result['portfolio_hist']
+            print(f"First value: {list(portfolio_hist.values())[0]}")
+            print(f"Last value: {list(portfolio_hist.values())[-1]}")
+            print(f"Min value: {min(portfolio_hist.values())}")
+            print(f"Max value: {max(portfolio_hist.values())}")
             
             print("Debug - Portfolio Data:")
             print(f"Historical Data: {result['historical_data']}")
@@ -116,11 +127,21 @@ def simulate():
         original_tickers = portfolio_df['ticker'].tolist()
         original_weights = portfolio_df['weight'].tolist()
         original_historical = get_historical_returns(original_tickers, interval=interval, start_date=start_date, end_date=end_date)
-        original_hist = calculate_portfolio_historical_returns(original_historical, original_tickers, original_weights)
+        
+        # Calculate original portfolio returns directly
+        original_returns = original_historical.pct_change().fillna(0)
+        original_weight_series = pd.Series(original_weights, index=original_tickers)
+        # Calculate weighted returns directly
+        weighted_returns = pd.Series(0.0, index=original_returns.index)
+        for ticker, weight in zip(original_tickers, original_weights):
+            if ticker in original_returns.columns:
+                weighted_returns += original_returns[ticker] * weight
+        
+        # Calculate cumulative return
+        original_hist = (1 + weighted_returns).cumprod() - 1
         
         # Calculate risk metrics for original portfolio
-        original_returns = original_hist.pct_change().fillna(0)
-        original_risk_metrics = calculate_risk_metrics(original_returns)
+        original_risk_metrics = calculate_risk_metrics(weighted_returns)
         
         original_hist_dict = {
             str(k): float(v) if not pd.isna(v) else 0.0 
@@ -147,13 +168,49 @@ def simulate():
             start_date=start_date, 
             end_date=end_date
         )
-        print(f"Raw simulation historical data:")
-        print(sim_historical.head())
-        simulation_hist = calculate_portfolio_historical_returns(sim_historical, sim_tickers, sim_weights)
+        
+        # Handle BTC data separately
+        if 'BTC' in sim_tickers:
+            btc_data = get_historical_returns(['BTC'], interval=interval, start_date=start_date, end_date=end_date)
+            # Forward fill BTC data
+            btc_data = btc_data.fillna(method='ffill')
+            sim_historical['BTC'] = btc_data['BTC']
+        
+        # Calculate simulation returns directly
+        sim_returns = sim_historical.pct_change().fillna(0)
+        
+        # Handle manual return asset if it exists
+        if manual_return is not None and new_asset not in sim_historical.columns:
+            # Create a constant daily return that compounds to the manual return
+            dates = sim_returns.index
+            daily_return = (1 + manual_return) ** (1/len(dates)) - 1
+            # Add to sim_returns DataFrame
+            sim_returns[new_asset] = pd.Series(daily_return, index=dates)
+        
+        sim_weight_series = pd.Series(sim_weights, index=sim_tickers)
+        # Calculate weighted returns directly
+        weighted_returns = pd.Series(0.0, index=sim_returns.index)
+        for ticker, weight in zip(sim_tickers, sim_weights):
+            if ticker in sim_returns.columns:
+                weighted_returns += sim_returns[ticker] * weight
+        
+        # Calculate cumulative return
+        simulation_hist = (1 + weighted_returns).cumprod() - 1
+        
+        # Calculate risk metrics for original portfolio
+        simulation_risk_metrics = calculate_risk_metrics(weighted_returns)
+        
         sim_hist_dict = {
             str(k): float(v) if not pd.isna(v) else 0.0 
             for k, v in simulation_hist.items()
         }
+        
+        # Debug logging for simulation values
+        print("\nDebug - Simulation History Values:")
+        print(f"First value: {list(sim_hist_dict.values())[0]}")
+        print(f"Last value: {list(sim_hist_dict.values())[-1]}")
+        print(f"Min value: {min(sim_hist_dict.values())}")
+        print(f"Max value: {max(sim_hist_dict.values())}")
         
         # Clean up simulation results
         simulation_portfolio = [
