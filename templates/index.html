@@ -380,14 +380,12 @@
                     }
                     
                     const traces = [{
+                        name: 'Original Portfolio',
                         x: Object.keys(data.original),
                         y: Object.values(data.original),
                         type: 'scatter',
                         mode: 'lines',
-                        name: 'Original Portfolio',
-                        line: {
-                            color: '#3498DB'
-                        }
+                        line: { color: 'rgb(33, 150, 243)' }
                     }];
                     
                     // Add simulation trace if it exists
@@ -396,14 +394,12 @@
                         console.log('Simulation dates:', Object.keys(data.simulation));
                         console.log('Simulation values:', Object.values(data.simulation));
                         traces.push({
+                            name: 'Simulated Portfolio',
                             x: Object.keys(data.simulation),
                             y: Object.values(data.simulation),
                             type: 'scatter',
                             mode: 'lines',
-                            name: 'Simulated Portfolio',
-                            line: {
-                                color: '#E74C3C'
-                            }
+                            line: { color: 'rgb(244, 67, 54)' }
                         });
                     }
                     
